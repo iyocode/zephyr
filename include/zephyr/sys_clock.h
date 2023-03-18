@@ -48,7 +48,12 @@ typedef int64_t k_ticks_t;
 typedef uint32_t k_ticks_t;
 #endif
 
+#if CONFIG_SOC_FAMILY_GAP //dumb fix, -1 defaults to a 64-bit type.
+#define K_TICKS_FOREVER ((k_ticks_t)0xFFFFFFFF)
+#else
 #define K_TICKS_FOREVER ((k_ticks_t) -1)
+#endif
+
 
 /**
  * @brief Kernel timeout type
