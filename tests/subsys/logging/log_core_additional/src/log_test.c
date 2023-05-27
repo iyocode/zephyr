@@ -19,6 +19,7 @@
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_output.h>
+#include <zephyr/sys/iterable_sections.h>
 
 #define TEST_MESSAGE "test msg"
 
@@ -484,11 +485,11 @@ ZTEST(test_log_core_additional, test_log_msg_create)
 					  level, &msg_data, 0,
 					  sizeof(msg_data), NULL);
 		/* try z_log_msg_static_create() */
-		Z_LOG_MSG2_STACK_CREATE(0, domain, __log_current_const_data,
+		Z_LOG_MSG_STACK_CREATE(0, domain, __log_current_const_data,
 					level, &msg_data,
 					sizeof(msg_data), NULL);
 
-		Z_LOG_MSG2_CREATE(!IS_ENABLED(CONFIG_USERSPACE), mode,
+		Z_LOG_MSG_CREATE(!IS_ENABLED(CONFIG_USERSPACE), mode,
 			  Z_LOG_LOCAL_DOMAIN_ID, NULL,
 			  LOG_LEVEL_INTERNAL_RAW_STRING, NULL, 0, TEST_MESSAGE);
 
@@ -510,11 +511,11 @@ ZTEST_USER(test_log_core_additional, test_log_msg_create_user)
 				  level, &msg_data, 0,
 				  sizeof(msg_data), TEST_MESSAGE);
 	/* try z_log_msg_static_create() */
-	Z_LOG_MSG2_STACK_CREATE(0, domain, NULL,
+	Z_LOG_MSG_STACK_CREATE(0, domain, NULL,
 				level, &msg_data,
 				sizeof(msg_data), TEST_MESSAGE);
 
-	Z_LOG_MSG2_CREATE(!IS_ENABLED(CONFIG_USERSPACE), mode,
+	Z_LOG_MSG_CREATE(!IS_ENABLED(CONFIG_USERSPACE), mode,
 			  Z_LOG_LOCAL_DOMAIN_ID, NULL,
 		  LOG_LEVEL_INTERNAL_RAW_STRING, NULL, 0, TEST_MESSAGE);
 

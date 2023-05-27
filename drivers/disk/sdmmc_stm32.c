@@ -139,7 +139,7 @@ static int stm32_sdmmc_clock_enable(struct stm32_sdmmc_priv *priv)
 
 	if (DT_INST_NUM_CLOCKS(0) > 1) {
 		if (clock_control_configure(clock,
-					    (clock_control_subsys_t *)&priv->pclken[1],
+					    (clock_control_subsys_t)&priv->pclken[1],
 					    NULL) != 0) {
 			LOG_ERR("Failed to enable SDMMC domain clock");
 			return -EIO;
@@ -150,7 +150,7 @@ static int stm32_sdmmc_clock_enable(struct stm32_sdmmc_priv *priv)
 		uint32_t sdmmc_clock_rate;
 
 		if (clock_control_get_rate(clock,
-					   (clock_control_subsys_t *)&priv->pclken[1],
+					   (clock_control_subsys_t)&priv->pclken[1],
 					   &sdmmc_clock_rate) != 0) {
 			LOG_ERR("Failed to get SDMMC domain clock rate");
 			return -EIO;
@@ -163,7 +163,7 @@ static int stm32_sdmmc_clock_enable(struct stm32_sdmmc_priv *priv)
 	}
 
 	/* Enable the APB clock for stm32_sdmmc */
-	return clock_control_on(clock, (clock_control_subsys_t *)&priv->pclken[0]);
+	return clock_control_on(clock, (clock_control_subsys_t)&priv->pclken[0]);
 }
 
 static int stm32_sdmmc_clock_disable(struct stm32_sdmmc_priv *priv)
@@ -173,7 +173,7 @@ static int stm32_sdmmc_clock_disable(struct stm32_sdmmc_priv *priv)
 	clock = DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE);
 
 	return clock_control_off(clock,
-				 (clock_control_subsys_t *)&priv->pclken);
+				 (clock_control_subsys_t)&priv->pclken);
 }
 
 #if STM32_SDMMC_USE_DMA
@@ -241,7 +241,7 @@ static int stm32_sdmmc_dma_init(struct stm32_sdmmc_priv *priv)
 	HAL_DMA_DeInit(&dma_tx_handle);
 	HAL_DMA_Init(&dma_tx_handle);
 
-	stm32_sdmmc_configure_dma(&dma_rx_handle, &priv->dma_rx);
+	err = stm32_sdmmc_configure_dma(&dma_rx_handle, &priv->dma_rx);
 	if (err) {
 		LOG_ERR("failed to init rx dma");
 		return err;
@@ -270,7 +270,11 @@ static int stm32_sdmmc_access_init(struct disk_info *disk)
 	}
 
 #if STM32_SDMMC_USE_DMA
-	stm32_sdmmc_dma_init(priv);
+	err = stm32_sdmmc_dma_init(priv);
+	if (err) {
+		LOG_ERR("DMA init failed");
+		return err;
+	}
 #endif
 
 	err = stm32_sdmmc_clock_enable(priv);
@@ -322,7 +326,7 @@ static int stm32_sdmmc_access_read(struct disk_info *disk, uint8_t *data_buf,
 
 	k_sem_take(&priv->thread_lock, K_FOREVER);
 
-#if STM32_SDMMC_USE_DMA
+#if STM32_SDMMC_USE_DMA || IS_ENABLED(DT_PROP(DT_DRV_INST(0), idma))
 	err = HAL_SD_ReadBlocks_DMA(&priv->hsd, data_buf, start_sector,
 				num_sector);
 #else
@@ -361,7 +365,7 @@ static int stm32_sdmmc_access_write(struct disk_info *disk,
 
 	k_sem_take(&priv->thread_lock, K_FOREVER);
 
-#if STM32_SDMMC_USE_DMA
+#if STM32_SDMMC_USE_DMA || IS_ENABLED(DT_PROP(DT_DRV_INST(0), idma))
 	err = HAL_SD_WriteBlocks_DMA(&priv->hsd, (uint8_t *)data_buf, start_sector,
 				 num_sector);
 #else
@@ -685,6 +689,9 @@ static struct stm32_sdmmc_priv stm32_sdmmc_priv_1 = {
 	.hsd = {
 		.Instance = (MMC_TypeDef *)DT_INST_REG_ADDR(0),
 		.Init.BusWide = SDMMC_BUS_WIDTH,
+#if DT_INST_NODE_HAS_PROP(0, clk_div)
+		.Init.ClockDiv = DT_INST_PROP(0, clk_div),
+#endif
 	},
 #if DT_INST_NODE_HAS_PROP(0, cd_gpios)
 	.cd = GPIO_DT_SPEC_INST_GET(0, cd_gpios),

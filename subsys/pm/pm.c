@@ -9,6 +9,7 @@
 #include <zephyr/timeout_q.h>
 #include <zephyr/init.h>
 #include <string.h>
+#include <zephyr/drivers/timer/system_timer.h>
 #include <zephyr/pm/device.h>
 #include <zephyr/pm/device_runtime.h>
 #include <zephyr/pm/pm.h>
@@ -50,7 +51,7 @@ static struct k_spinlock pm_notifier_lock;
 
 
 #ifdef CONFIG_PM_DEVICE
-extern const struct device *__pm_device_slots_start[];
+TYPE_SECTION_START_EXTERN(const struct device *, pm_device_slots);
 
 #if !defined(CONFIG_PM_DEVICE_RUNTIME_EXCLUSIVE)
 /* Number of devices successfully suspended. */
@@ -91,7 +92,7 @@ static int pm_suspend_devices(void)
 			return ret;
 		}
 
-		__pm_device_slots_start[num_susp] = dev;
+		TYPE_SECTION_START(pm_device_slots)[num_susp] = dev;
 		num_susp++;
 	}
 
@@ -101,7 +102,7 @@ static int pm_suspend_devices(void)
 static void pm_resume_devices(void)
 {
 	for (int i = (num_susp - 1); i >= 0; i--) {
-		pm_device_action_run(__pm_device_slots_start[i],
+		pm_device_action_run(TYPE_SECTION_START(pm_device_slots)[i],
 				    PM_DEVICE_ACTION_RESUME);
 	}
 
@@ -235,7 +236,7 @@ bool pm_system_suspend(int32_t ticks)
 		 * We need to set the timer to interrupt a little bit early to
 		 * accommodate the time required by the CPU to fully wake up.
 		 */
-		z_set_timeout_expiry(ticks -
+		sys_clock_set_timeout(ticks -
 		     k_us_to_ticks_ceil32(
 			     z_cpus_pm_state[id].exit_latency_us),
 				     true);

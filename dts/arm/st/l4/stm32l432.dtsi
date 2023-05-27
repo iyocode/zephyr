@@ -8,6 +8,8 @@
 
 / {
 	soc {
+		compatible = "st,stm32l432", "st,stm32l4", "simple-bus";
+
 		clocks {
 			clk_hsi48: clk-hsi48 {
 				#clock-cells = <0>;
@@ -88,10 +90,6 @@
 				status = "disabled";
 			};
 		};
-	};
-
-	die_temp: dietemp {
-		ts-cal2-temp = <130>;
 	};
 
 	usb_fs_phy: usbphy {

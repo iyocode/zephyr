@@ -8,6 +8,8 @@
 
 / {
 	soc {
+		compatible = "st,stm32l471", "st,stm32l4", "simple-bus";
+
 		pinctrl: pin-controller@48000000 {
 
 			gpiod: gpio@48000c00 {
@@ -269,5 +271,9 @@
 				status = "disabled";
 			};
 		};
+	};
+
+	die_temp: dietemp {
+		ts-cal2-temp = <110>;
 	};
 };

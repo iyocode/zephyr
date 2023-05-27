@@ -68,6 +68,10 @@ set_property(TARGET compiler-cpp PROPERTY dialect_cpp2b)
 # Flag for disabling strict aliasing rule in C and C++
 set_compiler_property(PROPERTY no_strict_aliasing)
 
+# Extra warnings options for twister run
+set_property(TARGET compiler PROPERTY warnings_as_errors)
+set_property(TARGET asm PROPERTY warnings_as_errors)
+
 # Flag for disabling exceptions in C++
 set_property(TARGET compiler-cpp PROPERTY no_exceptions)
 
@@ -98,6 +102,9 @@ set_compiler_property(PROPERTY freestanding)
 
 # Flag to include debugging symbol in compilation
 set_compiler_property(PROPERTY debug)
+
+# Flags to save temporary object files
+set_compiler_property(PROPERTY save_temps)
 
 set_compiler_property(PROPERTY no_common)
 

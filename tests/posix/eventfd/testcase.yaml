@@ -1,6 +1,10 @@
 common:
   arch_exclude: posix
-  tags: posix eventfd
+  tags:
+    - posix
+    - eventfd
+  integration_platforms:
+    - qemu_x86
 tests:
   portability.posix.eventfd:
     min_ram: 32

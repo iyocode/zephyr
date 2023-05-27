@@ -1,3 +1,7 @@
 tests:
   benchmark.data_structure_perf.rbtree:
-    tags: benchmark rbtree
+    tags:
+      - benchmark
+      - rbtree
+    integration_platforms:
+      - native_posix

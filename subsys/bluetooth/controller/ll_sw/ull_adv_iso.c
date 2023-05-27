@@ -233,7 +233,7 @@ uint8_t ll_big_create(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
 			1U;
 
 	/* BN (Burst Count), Mandatory BN = 1 */
-	bn = ceiling_fraction(max_sdu, lll_adv_iso->max_pdu) * sdu_per_event;
+	bn = DIV_ROUND_UP(max_sdu, lll_adv_iso->max_pdu) * sdu_per_event;
 	if (bn > PDU_BIG_BN_MAX) {
 		/* Restrict each BIG event to maximum burst per BIG event */
 		lll_adv_iso->bn = PDU_BIG_BN_MAX;
@@ -241,7 +241,7 @@ uint8_t ll_big_create(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
 		/* Ceil the required burst count per SDU to next maximum burst
 		 * per BIG event.
 		 */
-		bn = ceiling_fraction(bn, PDU_BIG_BN_MAX) * PDU_BIG_BN_MAX;
+		bn = DIV_ROUND_UP(bn, PDU_BIG_BN_MAX) * PDU_BIG_BN_MAX;
 	} else {
 		lll_adv_iso->bn = bn;
 	}
@@ -271,7 +271,7 @@ uint8_t ll_big_create(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
 					       phy, lll_adv_iso->phy_flags) +
 				    EVENT_MSS_US;
 	ctrl_spacing = PDU_BIS_US(sizeof(struct pdu_big_ctrl), encryption, phy,
-				  lll_adv_iso->phy_flags) + EVENT_IFS_US;
+				  lll_adv_iso->phy_flags);
 	latency_packing = lll_adv_iso->sub_interval * lll_adv_iso->nse *
 			  lll_adv_iso->num_bis;
 	event_spacing = latency_packing + ctrl_spacing +
@@ -410,6 +410,7 @@ uint8_t ll_big_create(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
 	pdu_big_info_chan_map_phy_set(big_info->chm_phy,
 				      lll_adv_iso->data_chan_map,
 				      phy);
+	/* Assign the 39-bit payload count, and 1-bit framing */
 	big_info->payload_count_framing[0] = lll_adv_iso->payload_count;
 	big_info->payload_count_framing[1] = lll_adv_iso->payload_count >> 8;
 	big_info->payload_count_framing[2] = lll_adv_iso->payload_count >> 16;
@@ -484,6 +485,11 @@ uint8_t ll_big_create(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
 
 	/* Associate the ISO instance with a Periodic Advertising */
 	lll_adv_sync->iso = lll_adv_iso;
+
+#if defined(CONFIG_BT_TICKER_EXT_EXPIRE_INFO)
+	/* Notify the sync instance */
+	ull_adv_iso_created(HDR_LLL2ULL(lll_adv_sync));
+#endif /* CONFIG_BT_TICKER_EXT_EXPIRE_INFO */
 
 	/* Commit the BIGInfo in the ACAD field of Periodic Advertising */
 	lll_adv_sync_data_enqueue(lll_adv_sync, ter_idx);
@@ -721,6 +727,52 @@ void ull_adv_iso_offset_get(struct ll_adv_sync_set *sync)
 	LL_ASSERT(!ret);
 }
 
+#if defined(CONFIG_BT_TICKER_EXT_EXPIRE_INFO)
+void ull_adv_iso_lll_biginfo_fill(struct pdu_adv *pdu, struct lll_adv_sync *lll_sync)
+{
+	struct lll_adv_iso *lll_iso;
+	uint16_t latency_prepare;
+	struct pdu_big_info *bi;
+	uint64_t payload_count;
+
+	lll_iso = lll_sync->iso;
+
+	/* Calculate current payload count. If refcount is non-zero, we have called
+	 * prepare and the LLL implementation has incremented latency_prepare already.
+	 * In this case we need to subtract lazy + 1 from latency_prepare
+	 */
+	latency_prepare = lll_iso->latency_prepare;
+	if (ull_ref_get(HDR_LLL2ULL(lll_iso))) {
+		/* We are in post-prepare. latency_prepare is already
+		 * incremented by lazy + 1 for next event
+		 */
+		latency_prepare -= lll_iso->iso_lazy + 1;
+	}
+
+	payload_count = lll_iso->payload_count + ((latency_prepare +
+						   lll_iso->iso_lazy) * lll_iso->bn);
+
+	bi = big_info_get(pdu);
+	big_info_offset_fill(bi, lll_iso->ticks_sync_pdu_offset, 0U);
+	/* Assign the 39-bit payload count, retaining the 1 MS bit framing value */
+	bi->payload_count_framing[0] = payload_count;
+	bi->payload_count_framing[1] = payload_count >> 8;
+	bi->payload_count_framing[2] = payload_count >> 16;
+	bi->payload_count_framing[3] = payload_count >> 24;
+	bi->payload_count_framing[4] &= ~0x7F;
+	bi->payload_count_framing[4] |= (payload_count >> 32) & 0x7F;
+
+	/* Update Channel Map in the BIGInfo until Thread context gets a
+	 * chance to update the PDU with new Channel Map.
+	 */
+	if (lll_sync->iso_chm_done_req != lll_sync->iso_chm_done_ack) {
+		pdu_big_info_chan_map_phy_set(bi->chm_phy,
+					      lll_iso->data_chan_map,
+					      lll_iso->phy);
+	}
+}
+#endif /* CONFIG_BT_TICKER_EXT_EXPIRE_INFO */
+
 void ull_adv_iso_done_complete(struct node_rx_event_done *done)
 {
 	struct ll_adv_iso_set *adv_iso;
@@ -916,8 +968,7 @@ static uint32_t adv_iso_start(struct ll_adv_iso_set *adv_iso,
 				 lll_iso->phy_flags) +
 		      EVENT_MSS_US;
 	ctrl_spacing = PDU_BIS_US(sizeof(struct pdu_big_ctrl), lll_iso->enc,
-				  lll_iso->phy, lll_iso->phy_flags) +
-		       EVENT_IFS_US;
+				  lll_iso->phy, lll_iso->phy_flags);
 	slot_us = (pdu_spacing * lll_iso->nse * lll_iso->num_bis) +
 		  ctrl_spacing;
 	slot_us += EVENT_OVERHEAD_START_US + EVENT_OVERHEAD_END_US;
@@ -941,8 +992,7 @@ static uint32_t adv_iso_start(struct ll_adv_iso_set *adv_iso,
 	/* Find the slot after Periodic Advertisings events */
 	ticks_anchor = ticker_ticks_now_get() +
 		       HAL_TICKER_US_TO_TICKS(EVENT_OVERHEAD_START_US);
-	err = ull_sched_adv_aux_sync_free_slot_get(TICKER_USER_ID_THREAD,
-						   ticks_slot, &ticks_anchor);
+	err = ull_sched_adv_aux_sync_free_anchor_get(ticks_slot, &ticks_anchor);
 	if (!err) {
 		ticks_anchor += HAL_TICKER_US_TO_TICKS(
 					MAX(EVENT_MAFS_US,
@@ -1129,11 +1179,11 @@ static void mfy_iso_offset_get(void *param)
 	pdu = lll_adv_sync_data_latest_peek(lll_sync);
 	bi = big_info_get(pdu);
 	big_info_offset_fill(bi, ticks_to_expire, 0U);
+	/* Assign the 39-bit payload count, retaining the 1 MS bit framing value */
 	bi->payload_count_framing[0] = payload_count;
 	bi->payload_count_framing[1] = payload_count >> 8;
 	bi->payload_count_framing[2] = payload_count >> 16;
 	bi->payload_count_framing[3] = payload_count >> 24;
-	bi->payload_count_framing[4] = payload_count >> 32;
 	bi->payload_count_framing[4] &= ~0x7F;
 	bi->payload_count_framing[4] |= (payload_count >> 32) & 0x7F;
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # vim: set syntax=python ts=4 :
 #
-# Copyright (c) 20180-2022 Intel Corporation
+# Copyright (c) 2018-2022 Intel Corporation
 # Copyright 2022 NXP
 # SPDX-License-Identifier: Apache-2.0
 
@@ -19,6 +19,7 @@ import select
 import re
 import psutil
 from twisterlib.environment import ZEPHYR_BASE
+from twisterlib.error import TwisterException
 sys.path.insert(0, os.path.join(ZEPHYR_BASE, "scripts/pylib/build_helpers"))
 from domains import Domains
 
@@ -40,17 +41,6 @@ logger.setLevel(logging.DEBUG)
 
 SUPPORTED_SIMS = ["mdb-nsim", "nsim", "renode", "qemu", "tsim", "armfvp", "xt-sim", "native"]
 
-class HarnessImporter:
-
-    def __init__(self, name):
-        sys.path.insert(0, os.path.join(ZEPHYR_BASE, "scripts/pylib/twister/twisterlib"))
-        module = __import__("harness")
-        if name:
-            my_class = getattr(module, name)
-        else:
-            my_class = getattr(module, "Test")
-
-        self.instance = my_class()
 
 class Handler:
     def __init__(self, instance, type_str="build"):
@@ -115,6 +105,8 @@ class Handler:
         (and not in reverse).
         """
         expected_suite_names = self.instance.testsuite.ztest_suite_names
+        logger.debug(f"Expected suite names:{expected_suite_names}")
+        logger.debug(f"Detected suite names:{detected_suite_names}")
         if not expected_suite_names or \
                 not harness_state == "passed":
             return
@@ -145,7 +137,8 @@ class Handler:
         harness_class_name = type(harness).__name__
         if self.suite_name_check and harness_class_name == "Test":
             self._verify_ztest_suite_name(harness.state, harness.detected_suite_names, handler_time)
-
+            if self.instance.status == 'failed':
+                return
             if not harness.matched_run_id and harness.run_id_exists:
                 self.instance.status = "failed"
                 self.instance.execution_time = handler_time
@@ -183,9 +176,7 @@ class BinaryHandler(Handler):
         self.line = proc.stdout.readline()
 
     def _output_handler(self, proc, harness):
-        if harness.is_pytest:
-            harness.handle(None)
-            return
+        suffix = '\\r\\n'
 
         with open(self.log, "wt") as log_out_fp:
             timeout_extended = False
@@ -199,7 +190,10 @@ class BinaryHandler(Handler):
                 reader_t.join(this_timeout)
                 if not reader_t.is_alive() and self.line != b"":
                     line_decoded = self.line.decode('utf-8', "replace")
-                    stripped_line = line_decoded.rstrip()
+                    if line_decoded.endswith(suffix):
+                        stripped_line = line_decoded[:-len(suffix)].rstrip()
+                    else:
+                        stripped_line = line_decoded.rstrip()
                     logger.debug("OUTPUT: %s", stripped_line)
                     log_out_fp.write(line_decoded)
                     log_out_fp.flush()
@@ -221,14 +215,13 @@ class BinaryHandler(Handler):
             except subprocess.TimeoutExpired:
                 self.terminate(proc)
 
-    def handle(self):
+    def handle(self, harness):
 
-        harness_name = self.instance.testsuite.harness.capitalize()
-        harness_import = HarnessImporter(harness_name)
-        harness = harness_import.instance
-        harness.configure(self.instance)
+        robot_test = getattr(harness, "is_robot_test", False)
 
-        if self.call_make_run:
+        if robot_test:
+            command = [self.generator_cmd, "run_renode_test"]
+        elif self.call_make_run:
             command = [self.generator_cmd, "run"]
         elif self.call_west_flash:
             command = ["west", "flash", "--skip-rebuild", "-d", self.build_dir]
@@ -268,6 +261,10 @@ class BinaryHandler(Handler):
             env["UBSAN_OPTIONS"] = "log_path=stdout:halt_on_error=1:" + \
                                   env.get("UBSAN_OPTIONS", "")
 
+        if robot_test:
+            harness.run_robot_test(command, self)
+            return
+
         with subprocess.Popen(command, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, cwd=self.build_dir, env=env) as proc:
             logger.debug("Spawning BinaryHandler Thread for %s" % self.name)
@@ -291,9 +288,6 @@ class BinaryHandler(Handler):
         # garbled and needs to be reset. Did not find a better way to do that.
         if sys.stdout.isatty():
             subprocess.call(["stty", "sane"], stdin=sys.stdout)
-
-        if harness.is_pytest:
-            harness.pytest_run(self.log)
 
         self.instance.execution_time = handler_time
         if not self.terminated and self.returncode != 0:
@@ -341,10 +335,6 @@ class DeviceHandler(Handler):
         super().__init__(instance, type_str)
 
     def monitor_serial(self, ser, halt_event, harness):
-        if harness.is_pytest:
-            harness.handle(None)
-            return
-
         log_out_fp = open(self.log, "wt")
 
         if self.options.coverage:
@@ -353,7 +343,8 @@ class DeviceHandler(Handler):
             # from the test.
             harness.capture_coverage = True
 
-        ser.flush()
+        # Clear serial leftover.
+        ser.reset_input_buffer()
 
         while ser.isOpen():
             if halt_event.is_set():
@@ -373,6 +364,12 @@ class DeviceHandler(Handler):
             except OSError:
                 time.sleep(0.001)
                 continue
+            except TypeError:
+                # This exception happens if the serial port was closed and
+                # its file descriptor cleared in between of ser.isOpen()
+                # and ser.in_waiting checks.
+                logger.debug("Serial port is already closed, stop reading.")
+                break
 
             serial_line = None
             try:
@@ -404,11 +401,14 @@ class DeviceHandler(Handler):
     def device_is_available(self, instance):
         device = instance.platform.name
         fixture = instance.testsuite.harness_config.get("fixture")
+        dut_found = False
+
         for d in self.duts:
             if fixture and fixture not in d.fixtures:
                 continue
             if d.platform != device or (d.serial is None and d.serial_pty is None):
                 continue
+            dut_found = True
             d.lock.acquire()
             avail = False
             if d.available:
@@ -418,6 +418,9 @@ class DeviceHandler(Handler):
             d.lock.release()
             if avail:
                 return d
+
+        if not dut_found:
+            raise TwisterException(f"No device to serve as {device} platform.")
 
         return None
 
@@ -440,13 +443,23 @@ class DeviceHandler(Handler):
                 proc.communicate()
                 logger.error("{} timed out".format(script))
 
-    def handle(self):
-        runner = None
-
-        hardware = self.device_is_available(self.instance)
-        while not hardware:
-            time.sleep(1)
+    def get_hardware(self):
+        try:
             hardware = self.device_is_available(self.instance)
+            while not hardware:
+                time.sleep(1)
+                hardware = self.device_is_available(self.instance)
+        except TwisterException as error:
+            self.instance.status = "failed"
+            self.instance.reason = str(error)
+            logger.error(self.instance.reason)
+        return hardware
+
+    def handle(self, harness):
+        runner = None
+        hardware = self.get_hardware()
+        if not hardware:
+            return
 
         runner = hardware.runner or self.options.west_runner
         serial_pty = hardware.serial_pty
@@ -522,6 +535,10 @@ class DeviceHandler(Handler):
         if pre_script:
             self.run_custom_script(pre_script, 30)
 
+        flash_timeout = hardware.flash_timeout
+        if hardware.flash_with_test:
+            flash_timeout += self.timeout
+
         try:
             ser = serial.Serial(
                 serial_device,
@@ -529,7 +546,7 @@ class DeviceHandler(Handler):
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE,
                 bytesize=serial.EIGHTBITS,
-                timeout=self.timeout
+                timeout=max(flash_timeout, self.timeout)  # the worst case of no serial input
             )
         except serial.SerialException as e:
             self.instance.status = "failed"
@@ -548,31 +565,12 @@ class DeviceHandler(Handler):
                 self.make_device_available(serial_device)
             return
 
-        ser.flush()
-
-        # turns out the ser.flush() is not enough to clear serial leftover from last case
-        # explicitly readline() can do it reliably
-        old_timeout = ser.timeout
-        # wait for 1s if no serial output
-        ser.timeout = 1
-        # or read 1000 lines at most
-        # if the leftovers are more than 1000 lines, user should realize that once
-        # saw the caught ones and fix it.
-        leftover_lines = ser.readlines(1000)
-        for line in leftover_lines:
-            logger.debug(f"leftover log of previous test: {line}")
-        ser.timeout = old_timeout
-
-        harness_name = self.instance.testsuite.harness.capitalize()
-        harness_import = HarnessImporter(harness_name)
-        harness = harness_import.instance
-        harness.configure(self.instance)
         halt_monitor_evt = threading.Event()
 
         t = threading.Thread(target=self.monitor_serial, daemon=True,
                              args=(ser, halt_monitor_evt, harness))
-        t.start()
         start_time = time.time()
+        t.start()
 
         d_log = "{}/device.log".format(self.instance.build_dir)
         logger.debug('Flash command: %s', command)
@@ -581,7 +579,7 @@ class DeviceHandler(Handler):
             stdout = stderr = None
             with subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE) as proc:
                 try:
-                    (stdout, stderr) = proc.communicate(timeout=60)
+                    (stdout, stderr) = proc.communicate(timeout=flash_timeout)
                     # ignore unencodable unicode chars
                     logger.debug(stdout.decode(errors = "ignore"))
 
@@ -613,6 +611,7 @@ class DeviceHandler(Handler):
             self.run_custom_script(post_flash_script, 30)
 
         if not flash_error:
+            # Always wait at most the test timeout here after flashing.
             t.join(self.timeout)
         else:
             # When the flash error is due exceptions,
@@ -635,23 +634,19 @@ class DeviceHandler(Handler):
 
         handler_time = time.time() - start_time
 
-        if harness.is_pytest:
-            harness.pytest_run(self.log)
-
         self.instance.execution_time = handler_time
         if harness.state:
             self.instance.status = harness.state
             if harness.state == "failed":
                 self.instance.reason = "Failed"
         elif not flash_error:
-            self.instance.status = "error"
-            self.instance.reason = "No Console Output(Timeout)"
+            self.instance.status = "failed"
+            self.instance.reason = "Timeout"
 
-        if self.instance.status == "error":
+        if self.instance.status in ["error", "failed"]:
             self.instance.add_missing_case_status("blocked", self.instance.reason)
 
-        if not flash_error:
-            self._final_handle_actions(harness, handler_time)
+        self._final_handle_actions(harness, handler_time)
 
         if post_script:
             self.run_custom_script(post_script, 30)
@@ -758,11 +753,6 @@ class QEMUHandler(Handler):
             if pid == 0 and os.path.exists(pid_fn):
                 pid = int(open(pid_fn).read())
 
-            if harness.is_pytest:
-                harness.handle(None)
-                out_state = harness.state
-                break
-
             try:
                 c = in_fp.read(1).decode("utf-8")
             except UnicodeDecodeError:
@@ -806,10 +796,6 @@ class QEMUHandler(Handler):
                         timeout_time = time.time() + 2
             line = ""
 
-        if harness.is_pytest:
-            harness.pytest_run(logfile)
-            out_state = harness.state
-
         handler_time = time.time() - start_time
         logger.debug(f"QEMU ({pid}) complete ({out_state}) after {handler_time} seconds")
 
@@ -841,7 +827,7 @@ class QEMUHandler(Handler):
         os.unlink(fifo_in)
         os.unlink(fifo_out)
 
-    def handle(self):
+    def handle(self, harness):
         self.results = {}
         self.run = True
 
@@ -868,10 +854,6 @@ class QEMUHandler(Handler):
             os.unlink(self.pid_fn)
 
         self.log_fn = self.log
-
-        harness_import = HarnessImporter(self.instance.testsuite.harness.capitalize())
-        harness = harness_import.instance
-        harness.configure(self.instance)
 
         self.thread = threading.Thread(name=self.name, target=QEMUHandler._thread,
                                        args=(self, self.timeout, self.build_dir,

@@ -1,3 +1,7 @@
 tests:
   benchmark.data_structure_perf.dlist:
-    tags: benchmark dlist
+    tags:
+      - benchmark
+      - dlist
+    integration_platforms:
+      - native_posix

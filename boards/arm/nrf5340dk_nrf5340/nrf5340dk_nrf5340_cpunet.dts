@@ -153,18 +153,6 @@ arduino_spi: &spi0 {
 	pinctrl-names = "default", "sleep";
 };
 
-&timer0 {
-	status = "okay";
-};
-
-&timer1 {
-	status = "okay";
-};
-
-&timer2 {
-	status = "okay";
-};
-
 &flash1 {
 
 	partitions {
@@ -196,4 +184,4 @@ arduino_spi: &spi0 {
 };
 
 /* Include shared RAM configuration file */
-#include "nrf5340_shared_sram_planning_conf.dts"
+#include "nrf5340_shared_sram_planning_conf.dtsi"

@@ -5,6 +5,7 @@
  */
 
 #include <zephyr/ztest.h>
+#include <zephyr/sys/barrier.h>
 
 #define STACKSIZE 1024
 
@@ -14,10 +15,10 @@
  */
 #define PRIORITY  K_PRIO_COOP(0)
 
-#if defined(CONFIG_ARM) || defined(CONFIG_SPARC)
-#define K_FP_OPTS K_FP_REGS
-#elif defined(CONFIG_X86)
+#if defined(CONFIG_X86) && defined(CONFIG_X86_SSE)
 #define K_FP_OPTS (K_FP_REGS | K_SSE_REGS)
+#elif defined(CONFIG_X86) || defined(CONFIG_ARM) || defined(CONFIG_SPARC)
+#define K_FP_OPTS K_FP_REGS
 #else
 #error "Architecture not supported for this test"
 #endif
@@ -226,8 +227,8 @@ static void sup_fp_thread_entry(void)
 	 * Instruction barriers to make sure the NVIC IRQ is
 	 * set to pending state before program proceeds.
 	 */
-	__DSB();
-	__ISB();
+	barrier_dsync_fence_full();
+	barrier_isync_fence_full();
 
 	/* Verify K_FP_REGS flag is still set */
 	if ((sup_fp_thread.base.user_options & K_FP_REGS) == 0) {

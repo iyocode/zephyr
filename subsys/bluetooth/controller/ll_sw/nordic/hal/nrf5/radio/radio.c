@@ -17,6 +17,7 @@
 
 #include "util/mem.h"
 
+#include "hal/cpu.h"
 #include "hal/ccm.h"
 #include "hal/radio.h"
 #include "hal/radio_df.h"
@@ -591,7 +592,7 @@ static uint32_t last_pdu_end_us;
 
 uint32_t radio_is_done(void)
 {
-	if (NRF_RADIO->EVENTS_END != 0) {
+	if (NRF_RADIO->NRF_RADIO_TXRX_END_EVENT != 0) {
 		/* On packet END event increment last packet end time value.
 		 * Note: this depends on the function being called exactly once
 		 * in the ISR function.
@@ -665,6 +666,18 @@ void *radio_pkt_decrypt_get(void)
 #elif !defined(HAL_RADIO_PDU_LEN_MAX)
 #error "Undefined HAL_RADIO_PDU_LEN_MAX."
 #endif
+
+#if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_SYNC_ISO)
+/* Dedicated Rx PDU Buffer for Control PDU independent of node_rx with BIS Data
+ * PDU buffer
+ */
+static uint8_t pkt_big_ctrl[sizeof(struct pdu_big_ctrl)];
+
+void *radio_pkt_big_ctrl_get(void)
+{
+	return pkt_big_ctrl;
+}
+#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_SYNC_ISO */
 
 #if !defined(CONFIG_BT_CTLR_TIFS_HW)
 static uint8_t sw_tifs_toggle;
@@ -1778,9 +1791,7 @@ uint32_t radio_ccm_is_done(void)
 {
 	nrf_ccm_int_enable(NRF_CCM, CCM_INTENSET_ENDCRYPT_Msk);
 	while (NRF_CCM->EVENTS_ENDCRYPT == 0) {
-		__WFE();
-		__SEV();
-		__WFE();
+		cpu_sleep();
 	}
 	nrf_ccm_int_disable(NRF_CCM, CCM_INTENCLR_ENDCRYPT_Msk);
 	NVIC_ClearPendingIRQ(nrfx_get_irq_number(NRF_CCM));
@@ -1871,9 +1882,7 @@ uint32_t radio_ar_has_match(void)
 	nrf_aar_int_enable(NRF_AAR, AAR_INTENSET_END_Msk);
 
 	while (NRF_AAR->EVENTS_END == 0U) {
-		__WFE();
-		__SEV();
-		__WFE();
+		cpu_sleep();
 	}
 
 	nrf_aar_int_disable(NRF_AAR, AAR_INTENCLR_END_Msk);
@@ -1907,9 +1916,7 @@ uint8_t radio_ar_resolve(const uint8_t *addr)
 	nrf_aar_task_trigger(NRF_AAR, NRF_AAR_TASK_START);
 
 	while (NRF_AAR->EVENTS_END == 0) {
-		__WFE();
-		__SEV();
-		__WFE();
+		cpu_sleep();
 	}
 
 	nrf_aar_int_disable(NRF_AAR, AAR_INTENCLR_END_Msk);
