@@ -190,10 +190,14 @@ int usb_dc_detach(void)
 						   dev_state.dev_struct.controllerHandle,
 						   kUSB_DeviceControlStop,
 						   NULL);
-	if (kStatus_USB_Success != status) {
-		return -EIO;
+	if (kStatus_USB_InvalidHandle == status) {
+		LOG_WRN("Invalid device handle");
+		return 0;
 	}
-
+	// if (kStatus_USB_Success != status) {
+	// 	return -EIO;
+	// }
+	//irq_disable(DT_INST_IRQN(0));
 	status = dev_state.dev_struct.controllerInterface->deviceDeinit(
 						   dev_state.dev_struct.controllerHandle);
 	if (kStatus_USB_Success != status) {
