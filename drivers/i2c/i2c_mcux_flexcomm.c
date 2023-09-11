@@ -33,6 +33,7 @@ struct mcux_flexcomm_data {
 	struct k_sem device_sync_sem;
 	struct k_sem lock;
 	status_t callback_status;
+	uint32_t dev_config_raw;
 #ifdef CONFIG_I2C_TARGET
 	i2c_slave_handle_t target_handle;
 	struct i2c_target_config *target_cfg;
@@ -83,6 +84,16 @@ static int mcux_flexcomm_configure(const struct device *dev,
 	k_sem_take(&data->lock, K_FOREVER);
 	I2C_MasterSetBaudRate(base, baudrate, clock_freq);
 	k_sem_give(&data->lock);
+	data->dev_config_raw = dev_config_raw;
+
+	return 0;
+}
+
+static int mcux_flexcomm_get_config(const struct device *dev,
+				   uint32_t* dev_config_raw)
+{
+	struct mcux_flexcomm_data *data = dev->data;
+	*dev_config_raw = data->dev_config_raw;
 
 	return 0;
 }
@@ -374,6 +385,7 @@ static int mcux_flexcomm_init(const struct device *dev)
 
 static const struct i2c_driver_api mcux_flexcomm_driver_api = {
 	.configure = mcux_flexcomm_configure,
+	.get_config = mcux_flexcomm_get_config,
 	.transfer = mcux_flexcomm_transfer,
 #if defined(CONFIG_I2C_TARGET)
 	.target_register = mcux_flexcomm_target_register,
