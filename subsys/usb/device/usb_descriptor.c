@@ -397,6 +397,8 @@ static int usb_fix_descriptor(struct usb_desc_header *head)
 	struct usb_cfg_data *cfg_data = NULL;
 	struct usb_ep_descriptor *ep_descr = NULL;
 	uint8_t numof_ifaces = 0U;
+	uint8_t intf_alt_setting = 0U;
+	uint8_t intf_endpoint_addr = 0U;
 	uint8_t str_descr_idx = 0U;
 	uint32_t requested_ep = BIT(16) | BIT(0);
 
@@ -416,6 +418,11 @@ static int usb_fix_descriptor(struct usb_desc_header *head)
 		case USB_DESC_INTERFACE:
 			if_descr = (struct usb_if_descriptor *)head;
 			LOG_DBG("Interface descriptor %p", head);
+
+			intf_alt_setting = if_descr->bAlternateSetting;
+			if(intf_alt_setting == 0){
+				intf_endpoint_addr = 0U;
+			}
 			if (if_descr->bAlternateSetting) {
 				LOG_DBG("Skip alternate interface");
 				break;
@@ -446,11 +453,20 @@ static int usb_fix_descriptor(struct usb_desc_header *head)
 
 			LOG_DBG("Endpoint descriptor %p", head);
 			ep_descr = (struct usb_ep_descriptor *)head;
+
+			if(intf_alt_setting > 1){
+				ep_descr->bEndpointAddress = intf_endpoint_addr;
+			}
+			else
 			if (usb_validate_ep_cfg_data(ep_descr,
 						     cfg_data,
 						     &requested_ep)) {
 				LOG_ERR("Failed to validate endpoints");
 				return -1;
+			}
+
+			if(intf_alt_setting == 1){
+				intf_endpoint_addr = ep_descr->bEndpointAddress;
 			}
 
 			break;
