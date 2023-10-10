@@ -58,8 +58,8 @@ BUILD_ASSERT(MAX_PACKET <= BLOCK_SIZE);
 #define THREAD_OP_WRITE_QUEUED		3
 #define THREAD_OP_WRITE_DONE		4
 
-#define MASS_STORAGE_IN_EP_ADDR		0x82
-#define MASS_STORAGE_OUT_EP_ADDR	0x01
+#define MASS_STORAGE_IN_EP_ADDR		AUTO_EP_IN//0x82
+#define MASS_STORAGE_OUT_EP_ADDR	AUTO_EP_OUT//0x01
 
 struct usb_mass_config {
 	struct usb_if_descriptor if0;
