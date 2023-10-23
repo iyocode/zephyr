@@ -72,7 +72,11 @@ USBD_DEVICE_DESCR_DEFINE(primary) struct common_descriptor common_desc = {
 		.bMaxPacketSize0 = USB_MAX_CTRL_MPS,
 		.idVendor = sys_cpu_to_le16((uint16_t)CONFIG_USB_DEVICE_VID),
 		.idProduct = sys_cpu_to_le16((uint16_t)CONFIG_USB_DEVICE_PID),
+#ifdef CONFIG_USB_DEVICE_VER
+		.bcdDevice = sys_cpu_to_le16(CONFIG_USB_DEVICE_VER),
+#else
 		.bcdDevice = sys_cpu_to_le16(USB_BCD_DRN),
+#endif
 		.iManufacturer = USB_DESC_MANUFACTURER_IDX,
 		.iProduct = USB_DESC_PRODUCT_IDX,
 		.iSerialNumber = USB_DESC_SERIAL_NUMBER_IDX,

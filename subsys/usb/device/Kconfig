@@ -28,6 +28,14 @@ config USB_DEVICE_PID
 	help
 	  USB device product ID. MUST be configured by vendor.
 
+config USB_DEVICE_VER
+	hex "USB Device Version"
+	help
+	  USB device version. If not configured, the default value is the Zephyr kernel version.
+	  The value should be a 16-bit hex value, with the format 0xJJMN, where JJ is the major
+	  version number, M is the minor version number, and N is the sub-minor version number.
+	  Numbers should be in the range 0-9, AKA binary coded decimal (BCD) format.
+
 config USB_DEVICE_MANUFACTURER
 	string "USB manufacturer name"
 	default "ZEPHYR"
