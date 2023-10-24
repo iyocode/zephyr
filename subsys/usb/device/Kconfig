@@ -30,6 +30,7 @@ config USB_DEVICE_PID
 
 config USB_DEVICE_VER
 	hex "USB Device Version"
+	default 0x0340
 	help
 	  USB device version. If not configured, the default value is the Zephyr kernel version.
 	  The value should be a 16-bit hex value, with the format 0xJJMN, where JJ is the major
