@@ -928,7 +928,8 @@ static int usb_dfu_init(void)
  */
 static bool is_dfu_started(void)
 {
-	if ((dfu_data.state == dfuDNBUSY) ||
+	if (/*(dfu_data.state == appDETACH) ||*/
+		(dfu_data.state == dfuDNBUSY) ||
 	    (dfu_data.state == dfuDNLOAD_IDLE)) {
 		return true;
 	}
