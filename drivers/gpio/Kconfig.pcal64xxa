@@ -18,3 +18,15 @@ config GPIO_PCAL64XXA_INIT_PRIORITY
 	depends on GPIO_PCAL64XXA
 	help
 	  Device driver initialization priority.
+
+
+config GPIO_PCAL6408A_DRIVE_STRENGTH_BYTES
+	hex "PCAL6408A drive strength bytes"
+	default 0xffff
+	depends on GPIO_PCAL64XXA
+	help
+	  Set the drive strength for the PCAL6408A GPIO pins. The value is
+	  a bitmask where each bit corresponds to a pin and affects DRIVE_STRENGTH0 and DRIVE_STRENGTH1. A bit set to 1
+	  means that the pin will have a higher drive strength. The
+	  default value is 0xffff, which means that all pins will have the
+	  default drive strength.
