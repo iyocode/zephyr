@@ -371,12 +371,29 @@ static int mcux_flexcomm_init(const struct device *dev)
 				       mcux_flexcomm_master_transfer_callback,
 				       data);
 
-	bitrate_cfg = i2c_map_dt_bitrate(config->bitrate);
+	// bitrate_cfg = i2c_map_dt_bitrate(config->bitrate);
 
-	error = mcux_flexcomm_configure(dev, I2C_MODE_CONTROLLER | bitrate_cfg);
-	if (error) {
-		return error;
+	// error = mcux_flexcomm_configure(dev, I2C_MODE_CONTROLLER | bitrate_cfg);
+	// if (error) {
+	// 	return error;
+	// }
+
+	if (config->bitrate <= I2C_BITRATE_STANDARD) {
+		bitrate_cfg = I2C_SPEED_STANDARD << I2C_SPEED_SHIFT;
+	} else if (config->bitrate <= I2C_BITRATE_FAST) {
+		bitrate_cfg = I2C_SPEED_FAST << I2C_SPEED_SHIFT;
+	} else if (config->bitrate <= I2C_BITRATE_FAST_PLUS) {
+		bitrate_cfg = I2C_SPEED_FAST_PLUS << I2C_SPEED_SHIFT;
+	} else if (config->bitrate <= I2C_BITRATE_HIGH) {
+		bitrate_cfg = I2C_SPEED_HIGH << I2C_SPEED_SHIFT;
+	} else {
+		bitrate_cfg = I2C_SPEED_ULTRA << I2C_SPEED_SHIFT;
 	}
+
+	k_sem_take(&data->lock, K_FOREVER);
+	I2C_MasterSetBaudRate(base, config->bitrate, clock_freq);
+	k_sem_give(&data->lock);
+	data->dev_config_raw = I2C_MODE_CONTROLLER | bitrate_cfg;
 
 	config->irq_config_func(dev);
 
