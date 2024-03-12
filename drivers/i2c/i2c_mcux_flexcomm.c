@@ -165,6 +165,8 @@ static int mcux_flexcomm_transfer(const struct device *dev,
 		transfer.data = msgs->buf;
 		transfer.dataSize = msgs->len;
 
+		//void I2C_MasterSetTimeoutValue(I2C_Type *base, uint8_t timeout_Ms, uint32_t srcClock_Hz);
+
 		/* Start the transfer */
 		status = I2C_MasterTransferNonBlocking(base,
 				&data->handle, &transfer);
@@ -366,6 +368,8 @@ static int mcux_flexcomm_init(const struct device *dev)
 	}
 
 	I2C_MasterGetDefaultConfig(&master_config);
+	master_config.enableTimeout = true;
+	master_config.timeout_Ms = 255;
 	I2C_MasterInit(base, &master_config, clock_freq);
 	I2C_MasterTransferCreateHandle(base, &data->handle,
 				       mcux_flexcomm_master_transfer_callback,
