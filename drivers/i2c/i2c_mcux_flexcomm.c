@@ -201,6 +201,57 @@ static int mcux_flexcomm_transfer(const struct device *dev,
 	return ret;
 }
 
+static int mcux_flexcomm_recover_bus(const struct device *dev)
+{
+	const struct mcux_flexcomm_config *config = dev->config;
+	int ret = 0;
+
+	const struct pinctrl_state *pin_state;
+	ret = pinctrl_lookup_state(config->pincfg, PINCTRL_STATE_DEFAULT, &pin_state);
+	if (ret != 0)
+	{
+		return ret;
+	}
+
+	int gpio_pin_nums[2];
+	int gpio_port_nums[2];
+	int num_pins = (pin_state->pin_cnt < 2) ? pin_state->pin_cnt : 2;
+	for (uint8_t i =0; i < num_pins; i++)
+	{
+		pinctrl_soc_pin_t pin = pin_state->pins[i];
+		int pin_num = ((pin & 0xFFF00000) >> 20);
+		gpio_port_nums[i] = pin_num / 32;
+		gpio_pin_nums[i] = pin_num % 32;
+		
+		IOPCTL->PIO[gpio_port_nums[i]][gpio_pin_nums[i]] = IOPCTL_PIO_FSEL(0) | IOPCTL_PIO_IBENA(0) | IOPCTL_PIO_ODENA(1);
+		GPIO->DIR[gpio_port_nums[i]] |= BIT(gpio_pin_nums[i]);
+	}
+	LOG_INF("toggle gpio port %d, pin %d, port %d, pin %d", gpio_port_nums[0], gpio_pin_nums[0], gpio_port_nums[1], gpio_pin_nums[1]);
+	for (uint8_t j = 0; j < 15; j++)
+	{
+		for (uint8_t i =0; i < num_pins; i++)
+		{
+			GPIO->CLR[gpio_port_nums[i]] = BIT(gpio_pin_nums[i]);
+		}
+		k_busy_wait(5);
+		for (uint8_t i =0; i < num_pins; i++)
+		{
+			GPIO->SET[gpio_port_nums[i]] = BIT(gpio_pin_nums[i]);
+		}
+		k_busy_wait(5);
+	}
+
+	for (uint8_t i =0; i < num_pins; i++)
+	{
+		IOPCTL->PIO[gpio_port_nums[i]][gpio_pin_nums[i]] = IOPCTL_PIO_FSEL(0) | IOPCTL_PIO_PUPDENA(1) | IOPCTL_PIO_PUPDSEL(1) | IOPCTL_PIO_IBENA(0) | IOPCTL_PIO_ODENA(1);
+		GPIO->DIR[gpio_port_nums[i]] &= ~(BIT(gpio_pin_nums[i]));
+	}
+	k_busy_wait(50);
+	//reset back to I2C mode
+	ret = pinctrl_apply_state(config->pincfg, PINCTRL_STATE_DEFAULT);
+	return ret;
+}
+
 #if defined(CONFIG_I2C_TARGET)
 static void i2c_target_transfer_callback(I2C_Type *base,
 		volatile i2c_slave_transfer_t *transfer, void *userData)
@@ -412,6 +463,7 @@ static const struct i2c_driver_api mcux_flexcomm_driver_api = {
 	.target_register = mcux_flexcomm_target_register,
 	.target_unregister = mcux_flexcomm_target_unregister,
 #endif
+	.recover_bus = mcux_flexcomm_recover_bus,
 };
 
 #define I2C_MCUX_FLEXCOMM_DEVICE(id)					\
