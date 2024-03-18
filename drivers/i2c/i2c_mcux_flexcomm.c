@@ -205,6 +205,9 @@ static int mcux_flexcomm_recover_bus(const struct device *dev)
 {
 	const struct mcux_flexcomm_config *config = dev->config;
 	int ret = 0;
+	//status_t status;
+	struct mcux_flexcomm_data *data = dev->data;
+	I2C_Type *base = config->base;
 
 	const struct pinctrl_state *pin_state;
 	ret = pinctrl_lookup_state(config->pincfg, PINCTRL_STATE_DEFAULT, &pin_state);
@@ -213,8 +216,15 @@ static int mcux_flexcomm_recover_bus(const struct device *dev)
 		return ret;
 	}
 
+	I2C_MasterTransferAbort(base, &data->handle);
+	// I2C_MasterStart(base, 0x00, kI2C_Write);
+	// I2C_MasterStop(base);
+
+
 	int gpio_pin_nums[2];
 	int gpio_port_nums[2];
+	//TODO: identify the SCL pin and toggle that only - the SDA line should operate as an input
+	//if SDA is stuck low, we should send 9 clock pulses, 
 	int num_pins = (pin_state->pin_cnt < 2) ? pin_state->pin_cnt : 2;
 	for (uint8_t i =0; i < num_pins; i++)
 	{
@@ -223,7 +233,8 @@ static int mcux_flexcomm_recover_bus(const struct device *dev)
 		gpio_port_nums[i] = pin_num / 32;
 		gpio_pin_nums[i] = pin_num % 32;
 		
-		IOPCTL->PIO[gpio_port_nums[i]][gpio_pin_nums[i]] = IOPCTL_PIO_FSEL(0) | IOPCTL_PIO_IBENA(0) | IOPCTL_PIO_ODENA(1);
+		IOPCTL->PIO[gpio_port_nums[i]][gpio_pin_nums[i]] = IOPCTL_PIO_FSEL(0) | IOPCTL_PIO_PUPDENA(1) | IOPCTL_PIO_PUPDSEL(1) |
+															IOPCTL_PIO_IBENA(1) | IOPCTL_PIO_ODENA(1);
 		GPIO->DIR[gpio_port_nums[i]] |= BIT(gpio_pin_nums[i]);
 	}
 	LOG_INF("toggle gpio port %d, pin %d, port %d, pin %d", gpio_port_nums[0], gpio_pin_nums[0], gpio_port_nums[1], gpio_pin_nums[1]);
@@ -243,12 +254,16 @@ static int mcux_flexcomm_recover_bus(const struct device *dev)
 
 	for (uint8_t i =0; i < num_pins; i++)
 	{
-		IOPCTL->PIO[gpio_port_nums[i]][gpio_pin_nums[i]] = IOPCTL_PIO_FSEL(0) | IOPCTL_PIO_PUPDENA(1) | IOPCTL_PIO_PUPDSEL(1) | IOPCTL_PIO_IBENA(0) | IOPCTL_PIO_ODENA(1);
+		IOPCTL->PIO[gpio_port_nums[i]][gpio_pin_nums[i]] = IOPCTL_PIO_FSEL(0) | IOPCTL_PIO_PUPDENA(1) | IOPCTL_PIO_PUPDSEL(1) | 
+															IOPCTL_PIO_IBENA(1) | IOPCTL_PIO_ODENA(1);
 		GPIO->DIR[gpio_port_nums[i]] &= ~(BIT(gpio_pin_nums[i]));
 	}
 	k_busy_wait(50);
 	//reset back to I2C mode
 	ret = pinctrl_apply_state(config->pincfg, PINCTRL_STATE_DEFAULT);
+	//generate stop condition
+		//I2C_MasterStop(I2C_Type *base);;
+
 	return ret;
 }
 
