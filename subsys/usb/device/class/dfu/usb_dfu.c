@@ -937,6 +937,13 @@ static bool is_dfu_started(void)
 	return false;
 }
 
+bool usb_dfu_has_started(void)
+{
+	return dfu_data.state != appIDLE;
+}
+
+
+
 /**
  * @brief Function to check and wait while the USB DFU is in progress.
  *

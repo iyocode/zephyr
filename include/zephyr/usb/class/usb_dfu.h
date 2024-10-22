@@ -125,4 +125,6 @@ enum dfu_state {
 
 void wait_for_usb_dfu(k_timeout_t delay);
 
+bool usb_dfu_has_started(void);
+
 #endif /* ZEPHYR_INCLUDE_USB_CLASS_USB_DFU_H_ */
