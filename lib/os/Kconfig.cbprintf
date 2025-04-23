@@ -24,6 +24,16 @@ config CBPRINTF_NANO
 
 endchoice # CBPRINTF_IMPLEMENTATION
 
+config CBVPRINTF_IMPL_GONE
+	bool "Remove z_cbvprintf_impl from the build"
+	depends on CBPRINTF_NANO
+	default n
+	help
+	  If selected, the cbprintf implementation is removed from the build.
+	  This is useful if you are using a different implementation of
+	  printf() or if you are not using any printf() functionality.
+
+
 choice CBPRINTF_INTEGRAL_CONV
 	prompt "Control range of convertible integer values"
 	default CBPRINTF_FULL_INTEGRAL

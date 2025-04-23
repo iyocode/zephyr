@@ -64,6 +64,13 @@ static inline int convert_value(uint_value_type num, unsigned int base,
 		} \
 	} while (0)
 
+#if CONFIG_CBVPRINTF_IMPL_GONE
+int z_cbvprintf_impl(cbprintf_cb __out, void *ctx, const char *fmt,
+		     va_list ap, uint32_t flags) {
+
+	return -ENOTSUP;
+}
+#else
 /**
  * @brief Printk internals
  *
@@ -354,3 +361,4 @@ start:
 		goto start;
 	}
 }
+#endif
